@@ -5,6 +5,10 @@ const filename = process.argv[2];
 const bytes = fs.readFileSync(filename);
 const wasm = new WebAssembly.Module(bytes);
 
+function log(s) {
+//    process.stdout.write(s + "\n");
+}
+
 // The imports for Wee-O-Wasm, implemented in JavaScript.
 const imports = {weewasm: {
     puti: v => process.stdout.write("" + (v | 0)),
@@ -12,27 +16,33 @@ const imports = {weewasm: {
     // TODO: puts requires the module to export its memory, which is currently disallowed in WeeWasm.
 
     // Allocates a new WeeWasm object.
-    "obj.new": () => new WeeObject(),
+    "obj.new": () => new WeakMap(),
     // Gets a property from a WeeWasm object, given the key.
     "obj.get": function(ref, key) {
 	var obj = toWeeObject(ref);
+	log("obj.get(" + obj + ", " + key + ")");
 	if (key == null) throw new Error("null key");
 	var v;
-	if (key instanceof F64Box) { // F64s must be unboxed and stored separately
-	    v = toElems(obj)[key.val];
-	} else {
+	if ((typeof key) == "number") {
 	    v = obj[key];
+	} else if (key instanceof F64Box) { // F64s must be unboxed and stored separately
+	    v = getF64s(obj)[key.val];
+	} else {
+	    v = obj.get(key);
 	}
 	return v == undefined ? null : v;
     },
     // Sets a property from a WeeWasm object, given the key and the value
     "obj.set": function(ref, key, val) {
 	var obj = toWeeObject(ref);
+	log("obj.set(" + obj + ", " + key + ", " + val + ")");
 	if (key == null) throw new Error("null key");
-	if (key instanceof F64Box) { // F64s must be unboxed and stored separately
-	    toElems(obj)[key.val] = val;
-	} else {
+	if ((typeof key) == "number") {
 	    obj[key] = val;
+	} else if (key instanceof F64Box) { // F64s must be unboxed and stored separately
+	    getF64s(obj)[key.val] = val;
+	} else {
+	    obj.set(key, val);
 	}
     },
     // Converts an i32 into a WeeWasm reference.
@@ -58,18 +68,14 @@ const imports = {weewasm: {
 
 function toWeeObject(obj) {
     if (obj == null) throw new Error("null reference");
-    if (!(obj instanceof WeeObject)) throw new Error("not a wee object");
+    if (!(obj instanceof WeakMap)) throw new Error("not a wee object");
     return obj;
 }
 
-function toElems(obj) {
+function getF64s(obj) {
     var elems = obj.f64s;
     if (elems == undefined) elems = obj.f64s = new Object();
     return elems;
-}
-
-// WeeObjects are distinguished from f64 boxes (and other JS objects)
-function WeeObject() {
 }
 
 // F64s represented boxed floats, to distinguish from int
